@@ -36,8 +36,9 @@ import Views from './views'
  *
  * Git runs when the built-in's would: none at the start; `/diff` or the main
  * loop's first checkpointed edit with room pins the backend, until `/clear`,
- * which reads afresh under a pane it leaves open. Reads an edit or command
- * causes then wait after a slow one (refreshRestOf).
+ * which reads afresh under a pane it leaves open, or until the session's
+ * project root moves (followRoot). Reads an edit or command causes then wait
+ * after a slow one (refreshRestOf).
  *
  * @param on the engine's registrar
  */
@@ -72,7 +73,7 @@ export function register(on: On) {
   const bodyLoads = new Set<string>()
 
   const polled = { toplevel: '', headKey: '' }
-  const pin = { cwd: '', isEmpty: false, epoch: 0 }
+  const pin = { cwd: '', root: '', isEmpty: false, epoch: 0 }
 
   let model: PaneState.PaneModel = PaneState.INITIAL_MODEL
 
@@ -193,6 +194,43 @@ export function register(on: On) {
     isQueuedAsked = false
     timers.get('refresh')?.cancel()
     timers.delete('refresh')
+  }
+
+  async function rootOf(engine: Host): Promise<string> {
+    const root: unknown = await engine.root().catch(() => undefined)
+
+    return typeof root === 'string' ? root : ''
+  }
+
+  /**
+   * Follows the session's project root: when `/cd`, a host's directory
+   * change or a worktree move took it elsewhere since the repository was
+   * pinned, the pin is dropped and git is asked there next. A shell `cd`
+   * does not move the root, so it never moves the pane.
+   *
+   * @param engine the bound engine
+   * @returns whether the root moved and the pin was dropped
+   */
+  async function followRoot(engine: Host): Promise<boolean> {
+    const root = await rootOf(engine)
+    const isMoved = root !== '' && pin.root !== '' && root !== pin.root
+
+    if (root !== '' && pin.root === '') {
+      pin.root = root
+    }
+
+    if (!isMoved) {
+      return false
+    }
+
+    unpin()
+    pin.cwd = root
+    pin.root = root
+    bodyStamp = null
+    bodyBase = null
+    bodyLoads.clear()
+
+    return true
   }
 
   function dialogPane(): PaneOpenArgs {
@@ -377,6 +415,10 @@ export function register(on: On) {
     isQueuedAsked = false
     timers.get('refresh')?.cancel()
     timers.delete('refresh')
+
+    if ((await followRoot(engine)) && isPaneSeen()) {
+      await pinBackend(engine)
+    }
 
     const record = Record.recorderOf(engine)
     const pinned = backend
@@ -760,6 +802,7 @@ export function register(on: On) {
       return
     }
 
+    await followRoot(engine)
     await pinBackend(engine)
 
     if (!backend || isTaken()) {
@@ -922,6 +965,7 @@ export function register(on: On) {
   async function bind(engine: Host, cwd: string): Promise<void> {
     sessionStartMs = (await startedAtOf(engine)) ?? (await engine.now())
     pin.cwd = cwd
+    pin.root = await rootOf(engine)
 
     try {
       await engine.registerCommand(COMMAND_SPEC)
@@ -960,6 +1004,7 @@ export function register(on: On) {
         closePane: pane => $.ui.close(pane),
         registerCommand: spec => $.command.register(spec),
         sessionId: () => $.session.id(),
+        root: () => $.session.root(),
         startedAt: () =>
           $.session
             .usage()
@@ -1058,6 +1103,8 @@ export function register(on: On) {
     if (!host) {
       return next(e)
     }
+
+    await followRoot(host)
 
     const isAnswered = (await pinBackend(host)) || (await pinBackend(host))
 

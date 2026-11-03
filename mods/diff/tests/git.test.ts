@@ -44,6 +44,73 @@ describe('git', () => {
     expect(world.runs.some(run => run.argv.includes('config'))).toBe(false)
   })
 
+  test('a worktree move re-pins git where the root went', async ($, on) => {
+    const script: Record<string, string> = { ...Fixtures.REPOSITORY }
+    const world = Fixtures.inRepository(on, script)
+    const at = { root: '/work' }
+
+    const probes = () =>
+      world.runs.filter(run => run.argv.includes('--show-toplevel'))
+
+    on('session.root', () => ({ value: at.root }))
+    on('tool.call', () => ({ result: 'ran' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    await $.tool.call({ tool: 'Bash', command: 'cd /elsewhere && make' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(probes(), 'a shell cd leaves the root, and the pin').toHaveLength(1)
+
+    at.root = '/main/wt'
+    Object.assign(script, Fixtures.oneSecret())
+
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    const [, moved] = probes()
+
+    expect(probes(), 'the moved root probed once more').toHaveLength(2)
+    expect(moved?.init?.cwd, 'found where the root went').toBe('/main/wt')
+
+    const after = moved ? world.runs.slice(world.runs.indexOf(moved) + 1) : []
+
+    expect(after.length).toBeGreaterThan(0)
+
+    for (const run of after) {
+      expect(run.argv.slice(0, Fixtures.PINNED_LEAD.length)).toEqual(
+        Fixtures.PINNED_LEAD,
+      )
+
+      expect(run.init).toMatchObject({ cwd: '/main/wt' })
+    }
+
+    expect(Fixtures.stringsOf(await $.ui.render(Fixtures.PANE))).toContain(
+      '.env',
+    )
+  })
+
+  test('a root that cannot be read leaves the pin', async ($, on) => {
+    const world = Fixtures.inRepository(on)
+
+    on('tool.call', () => ({ result: 'ran' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    const probes = world.runs.filter(run =>
+      run.argv.includes('--show-toplevel'),
+    )
+
+    expect(probes, 'session.root unanswered: pinned once').toHaveLength(1)
+    expect(probes[0]?.init?.cwd).toBe('/work')
+  })
+
   test('the working tree is walked once, by the first fetch', async ($, on) => {
     const world = Fixtures.inRepository(on)
 

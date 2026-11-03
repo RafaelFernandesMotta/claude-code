@@ -111,6 +111,12 @@ export type Host = {
   sessionId: () => Promise<string>
 
   /**
+   * The session's project root, as `$.session.root` says: it moves with
+   * `/cd`, a host's directory change or a worktree move, never a shell `cd`.
+   */
+  root: () => Promise<string>
+
+  /**
    * When the session began, `$.session.usage`'s `startedAt`: where the line
    * between this session's edits and earlier ones falls, a resumed session's
    * first start, moved by `/clear`. Not a number under an engine that

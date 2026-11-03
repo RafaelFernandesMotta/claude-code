@@ -71,14 +71,17 @@ Git runs when the built-in panel's would: nothing at the session's start;
 one `git rev-parse`, in the directory the session started in, when `/diff`
 or the first edit a pane has room to open on first needs the repository (an
 answer of no repository is kept too, until `/clear` or `/resume` forgets
-it); and the working tree is read only by a fetch for an open pane after an
-edit that landed or a shell command that ran, or by the fetch before a pane
-opens. Two reads have no counterpart in the built-in: a `git status` at a
-pane's first fetch, which stands in for the change time the built-in dates a
-moved file by, and the fetches an open nobody asked for repeats after its
-first fetch did not open the pane: one after a later edit or shell command
-that lands (several during a wait count as one), and one more when one
-landed during a fetch.
+it), and one more in the session's new project root (`$.session.root`) when
+`/cd`, a host's directory change or a worktree move took it elsewhere, read
+as `/diff`, that first edit or a refresh comes (a shell `cd` moves no root,
+so it never moves the pane); and the working tree is read only by a fetch
+for an open pane after an edit that landed or a shell command that ran, or
+by the fetch before a pane opens. Two reads have no counterpart in the
+built-in: a `git status` at a pane's first fetch, which stands in for the
+change time the built-in dates a moved file by, and the fetches an open
+nobody asked for repeats after its first fetch did not open the pane: one
+after a later edit or shell command that lands (several during a wait count
+as one), and one more when one landed during a fetch.
 
 In a repository with commits, a fetch usually reads the whole tree twice:
 one `git diff --numstat`, whose rows also give the totals, and one
@@ -122,6 +125,7 @@ only on its first ask: later asks hold until the wait ends, and then one runs.
 `clock.after`, `clock.every`, `clock.now`, `command.register`, `env.get`
 (`CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`), `fs.list`, `fs.read`, `fs.stat`,
 `process.run` (git, read-only), `session.id`, `session.messages`,
+`session.root`,
 `settings.read`, `store.get`, `store.set`, `telemetry.log`, `telemetry.mark`,
 `ui.close`, `ui.invalidate`, `ui.log`, `ui.open`, `ui.resolve`, `ui.status`.
 
